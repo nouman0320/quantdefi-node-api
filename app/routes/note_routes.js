@@ -9,6 +9,7 @@ module.exports = function(app, db){
         const quantdefi = db.db('quantdefi');
         const cursor = await quantdefi.collection("items").find(toFind);
         var item=null;
+        //console.log(toFind);
         await cursor.forEach(
             async function(_item){
                 item = _item;
@@ -125,6 +126,138 @@ module.exports = function(app, db){
         return jsonResponse;
     }
 
+    app.post('/openitem', async (req, res) =>{
+        var id = ObjectId(req.body._id);
+        var item = {};
+        const quantdefi = db.db('quantdefi');
+        var cursor = await quantdefi.collection("items").find({_id:id});
+        while(await cursor.hasNext()) {
+            item = await cursor.next();
+        }
+
+        res.send(item);
+    });
+
+    app.post('/newitem', async (req, res) =>{
+
+
+        /*
+const jsonObj = {
+      "locality": this.item.locality,
+      "name": this.item.name,
+      "parent": this.item.parent,
+      "created_by": this.item.created_by,
+      "purchase_unit": this.item.purchase_unit,
+      "item_unit": this.item.item_unit,
+      "coverage_rate_1": this.item.coverage_rate_1,
+      "coverage_rate_2": this.item.coverage_rate_2,
+      "cost_type": this.item.cost_type,
+      "unit_cost": this.item.unit_cost,
+      "accounting_code": this.item.accounting_code
+    }
+        */
+
+        var locality = req.body.locality;
+        var name = req.body.name;
+        var parent = ObjectId(req.body.parent);
+        var created_by = req.body.created_by;
+        if(created_by!=null){
+            created_by = ObjectId(created_by);
+        }
+        var purchase_unit = req.body.purchase_unit;
+        var item_unit = req.body.item_unit;
+        var coverage_rate_1 = req.body.coverage_rate_1;
+        var coverage_rate_2 = req.body.coverage_rate_2;
+        var cost_type = req.body.cost_type;
+        var unit_cost = req.body.unit_cost;
+        var accounting_code = req.body.accounting_code;
+
+        const new_id = ObjectId(null);
+
+        var toInsert = {
+            "_id":new_id,
+            "locality": locality,
+            "name": name,
+            "parent": parent,
+            "created_by": created_by,
+            "purchase_unit": purchase_unit,
+            "item_unit": item_unit,
+            "coverage_rate_1": coverage_rate_1,
+            "coverage_rate_2": coverage_rate_2,
+            "cost_type": cost_type,
+            "unit_cost": unit_cost,
+            "accounting_code": accounting_code
+        }
+
+
+        const quantdefi = db.db('quantdefi');
+        await quantdefi.collection("items").insertOne(toInsert);
+
+        const cursor = await quantdefi.collection("folders").find({_id: parent});
+
+        while(await cursor.hasNext()) {
+            const folder = await cursor.next();
+            //console.log("====");
+            //console.log(folder);
+            if(folder["child_item"]==null){
+                //console.log("null");
+                await quantdefi.collection("folders").updateOne({_id: parent},{ $set: {child_item: [new_id]}},{ "upsert" : true });
+            } else {
+                //console.log("not null");
+                folder["child_item"].push(new_id);
+                await quantdefi.collection("folders").updateOne({_id: parent},{ $set: {child_item: folder["child_item"]}},{ "upsert" : true });
+            }
+        
+        }
+
+        res.status(201).send({_id:new_id});
+    });
+
+
+    app.post('/saveitem', async (req, res) =>{
+
+        const new_id = ObjectId(req.body._id);
+        var locality = req.body.locality;
+        var name = req.body.name;
+        var parent = ObjectId(req.body.parent);
+        var created_by = req.body.created_by;
+        if(created_by!=null){
+            created_by = ObjectId(created_by);
+        }
+        var purchase_unit = req.body.purchase_unit;
+        var item_unit = req.body.item_unit;
+        var coverage_rate_1 = req.body.coverage_rate_1;
+        var coverage_rate_2 = req.body.coverage_rate_2;
+        var cost_type = req.body.cost_type;
+        var unit_cost = req.body.unit_cost;
+        var accounting_code = req.body.accounting_code;
+
+
+        var toInsert = {
+            "_id":new_id,
+            "locality": locality,
+            "name": name,
+            "parent": parent,
+            "created_by": created_by,
+            "purchase_unit": purchase_unit,
+            "item_unit": item_unit,
+            "coverage_rate_1": coverage_rate_1,
+            "coverage_rate_2": coverage_rate_2,
+            "cost_type": cost_type,
+            "unit_cost": unit_cost,
+            "accounting_code": accounting_code
+        }
+
+
+
+        const quantdefi = db.db('quantdefi');
+        await quantdefi.collection("items").deleteOne({_id:new_id});
+        await quantdefi.collection("items").insertOne(toInsert);
+
+        res.status(201).send({_id:new_id});
+    });
+
+
     app.post('/newassembly', async (req, res) =>{
 
 
@@ -194,6 +327,11 @@ module.exports = function(app, db){
         ////console.log(type)
 
         if(type=='default' && locality=='assembly'){
+            res.send(await getFileSystemFromDB(type, locality, created_by, null, null));
+        }
+        else if(type=='default' && locality=='item'){
+            res.send(await getFileSystemFromDB(type, locality, created_by, null, null));
+        } else if(type=='custom' && locality=='item'){
             res.send(await getFileSystemFromDB(type, locality, created_by, null, null));
         }
     });
