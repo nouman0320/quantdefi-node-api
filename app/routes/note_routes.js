@@ -216,7 +216,16 @@ const jsonObj = {
 
     app.post('/saveitem', async (req, res) =>{
 
-        const new_id = ObjectId(req.body._id);
+        const quantdefi = db.db('quantdefi');
+
+        var saveAs = req.body._save_as;
+        var userId = req.body._user_id;
+
+        var new_id = ObjectId(req.body._id);
+
+        
+
+
         var locality = req.body.locality;
         var name = req.body.name;
         var parent = ObjectId(req.body.parent);
@@ -224,6 +233,44 @@ const jsonObj = {
         if(created_by!=null){
             created_by = ObjectId(created_by);
         }
+
+        if(saveAs){
+            new_id = ObjectId(null);
+            created_by = ObjectId(userId);
+
+            var cur = await quantdefi.collection("folders").find({save_as: true, created_by: ObjectId(userId)});
+
+            var hasN = await cur.hasNext();
+            if(hasN){
+                while(await cur.hasNext()) {
+                    const folder = await cur.next();
+                    folder["child_item"].push(new_id);
+                    await quantdefi.collection("folders").updateOne({_id: folder['_id']},{ $set: {child_item: folder["child_item"]}},{ "upsert" : true });
+                }
+            } else {
+                const new_id_ = ObjectId(null);
+
+                var data = {
+                    "_id": new_id_,
+                    "type": 'custom',
+                    "save_as": true,
+                    "locality": 'item',
+                    "name": 'My Custom Saves',
+                    "child_folder": null,
+                    "child_item": [new_id],
+                    "parent": null,
+                    "created_by": ObjectId(userId),
+                    "creation_date": new Date()
+                }
+
+                await quantdefi.collection("folders").insertOne(data);
+            }
+            
+
+
+
+        }
+
         var purchase_unit = req.body.purchase_unit;
         var item_unit = req.body.item_unit;
         var coverage_rate_1 = req.body.coverage_rate_1;
@@ -248,9 +295,6 @@ const jsonObj = {
             "accounting_code": accounting_code
         }
 
-
-
-        const quantdefi = db.db('quantdefi');
         await quantdefi.collection("items").deleteOne({_id:new_id});
         await quantdefi.collection("items").insertOne(toInsert);
 
