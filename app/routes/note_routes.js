@@ -126,6 +126,34 @@ module.exports = function(app, db){
         return jsonResponse;
     }
 
+
+
+    app.post('/getgroup', async (req, res) =>{
+        var id = ObjectId(req.body._id);
+        var group = {};
+        const quantdefi = db.db('quantdefi');
+        var cursor = await quantdefi.collection("group-items").find({_id:id});
+        while(await cursor.hasNext()) {
+            group = await cursor.next();
+        }
+
+        res.send(group);
+    });
+
+
+
+    app.post('/openassembly', async (req, res) =>{
+        var id = ObjectId(req.body._id);
+        var assembly = {};
+        const quantdefi = db.db('quantdefi');
+        var cursor = await quantdefi.collection("items").find({_id:id});
+        while(await cursor.hasNext()) {
+            assembly = await cursor.next();
+        }
+
+        res.send(assembly);
+    });
+
     app.post('/openitem', async (req, res) =>{
         var id = ObjectId(req.body._id);
         var item = {};
@@ -133,6 +161,131 @@ module.exports = function(app, db){
         var cursor = await quantdefi.collection("items").find({_id:id});
         while(await cursor.hasNext()) {
             item = await cursor.next();
+        }
+
+        res.send(item);
+    });
+
+
+    app.post('/createitemgroup', async (req, res) =>{
+
+        var id = ObjectId(null);
+        var name = req.body.name;
+        var created_by = ObjectId(req.body.created_by);
+        var assembly_id = ObjectId(req.body.assembly_id);
+
+        const quantdefi = db.db('quantdefi');
+
+        var toInsert = {
+            "_id": id,
+            "name": name,
+            "created_by": created_by,
+            "group_items":[]
+        }
+
+        await quantdefi.collection("group-items").insertOne(toInsert);
+
+        var cursor = await quantdefi.collection("items").find({_id: assembly_id});
+        while(await cursor.hasNext()) {
+            const assembly = await cursor.next();
+
+            if(assembly["group_item"]==null){
+                await quantdefi.collection("items").updateOne({_id: assembly_id},{ $set: {group_item: [id]}},{ "upsert" : true });
+            } else {
+                assembly["group_item"].push(id);
+                await quantdefi.collection("items").updateOne({_id: assembly_id},{ $set: {group_item: assembly["group_item"]}},{ "upsert" : true });
+            }
+        
+        }
+
+
+        res.send({_id:id});
+    });
+
+    app.post('/removerequireditem', async (req, res) =>{
+        var id = ObjectId(req.body._id);
+        var parent_id = ObjectId(req.body._parent_id);
+        var index = req.body.index
+
+        const quantdefi = db.db('quantdefi');
+
+        cursor = await quantdefi.collection("items").find({_id: parent_id});
+        while(await cursor.hasNext()) {
+            const assembly = await cursor.next();
+
+            if(assembly["required_item"]==null){
+            } else {
+
+                var new_r_i = [];
+                for(let i=0;i<assembly["required_item"].length;i++){
+                    if(i!=index){
+                        new_r_i.push(assembly["required_item"][i]);
+                        console.log(i);
+                        console.log(index);
+                    }
+                }
+
+                //console.log(assembly);
+                await quantdefi.collection("items").updateOne({_id: parent_id},{ $set: {required_item: new_r_i}},{ "upsert" : true });
+            }
+        
+        }
+
+        res.send({});
+
+    });
+
+
+
+    app.post('/getrequireditemforgroup', async (req, res) =>{
+        var id = ObjectId(req.body._id);
+        var group_id = ObjectId(req.body._group_id);
+        var item = {};
+        const quantdefi = db.db('quantdefi');
+        var cursor = await quantdefi.collection("items").find({_id:id});
+        while(await cursor.hasNext()) {
+            item = await cursor.next();
+        }
+
+        cursor = await quantdefi.collection("group-items").find({_id: group_id});
+        while(await cursor.hasNext()) {
+            const group = await cursor.next();
+
+            if(group["group_items"]==null){
+                await quantdefi.collection("group-items").updateOne({_id: group_id},{ $set: {group_items: [id]}},{ "upsert" : true });
+            } else {
+                group["group_items"].push(id);
+                await quantdefi.collection("group-items").updateOne({_id: group_id},{ $set: {group_items: group["group_items"]}},{ "upsert" : true });
+            }
+        
+        }
+
+        res.send(item);
+    });
+
+
+
+    app.post('/getrequireditem', async (req, res) =>{
+        var id = ObjectId(req.body._id);
+        var parent_id = ObjectId(req.body._parent_id);
+        var item = {};
+        const quantdefi = db.db('quantdefi');
+        var cursor = await quantdefi.collection("items").find({_id:id});
+        while(await cursor.hasNext()) {
+            item = await cursor.next();
+        }
+
+        cursor = await quantdefi.collection("items").find({_id: parent_id});
+        while(await cursor.hasNext()) {
+            const assembly = await cursor.next();
+
+            if(assembly["required_item"]==null){
+                await quantdefi.collection("items").updateOne({_id: parent_id},{ $set: {required_item: [id]}},{ "upsert" : true });
+            } else {
+                assembly["required_item"].push(id);
+                await quantdefi.collection("items").updateOne({_id: parent_id},{ $set: {required_item: assembly["required_item"]}},{ "upsert" : true });
+            }
+        
         }
 
         res.send(item);
@@ -371,6 +524,8 @@ const jsonObj = {
         ////console.log(type)
 
         if(type=='default' && locality=='assembly'){
+            res.send(await getFileSystemFromDB(type, locality, created_by, null, null));
+        } else if(type=='custom' && locality=='assembly'){
             res.send(await getFileSystemFromDB(type, locality, created_by, null, null));
         }
         else if(type=='default' && locality=='item'){
