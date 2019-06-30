@@ -167,6 +167,90 @@ module.exports = function(app, db){
     });
 
 
+
+    app.post('/deleteitemgroup', async (req, res) =>{
+        var group_id = ObjectId(req.body._group_id);
+        var assembly_id = ObjectId(req.body._assembly_id);
+        var group_index = req.body.item_index;
+
+        const quantdefi = db.db('quantdefi');
+
+        var cursor = await quantdefi.collection("items").find({_id: assembly_id});
+        while(await cursor.hasNext()) {
+            const assembly = await cursor.next();
+
+            if(assembly["group_item"]==null){
+            } else {
+                
+                var tempArr = [];
+                var deleted = false;
+                for(let i=0; i<assembly["group_item"].length;i++){
+                    if(assembly["group_item"][i] != req.body._group_id && !deleted){
+                        tempArr.push(assembly["group_item"][i]);
+                    }
+                    else if(deleted){
+                        tempArr.push(assembly["group_item"][i]);
+                    }
+                    else{
+                        deleted = true;
+                    }
+                }
+                
+                console.log(tempArr);
+
+                await quantdefi.collection("group-items").updateOne({_id: assembly_id},{ $set: {group_item: tempArr}},{ "upsert" : true });
+            }
+        
+        }
+
+        await quantdefi.collection("group-items").deleteOne({_id:group_id});
+
+        res.send({});
+        
+    });
+
+
+    app.post('/deleteiteminsidegroup', async (req, res) =>{
+        var group_id = ObjectId(req.body._group_id);
+        var item_id = ObjectId(req.body._item_id);
+        var item_index = req.body.item_index;
+
+        const quantdefi = db.db('quantdefi');
+
+        var cursor = await quantdefi.collection("group-items").find({_id: group_id});
+        while(await cursor.hasNext()) {
+            const group = await cursor.next();
+
+            if(group["group_items"]==null){
+            } else {
+                
+                var tempArr = [];
+                var deleted = false;
+                for(let i=0; i<group["group_items"].length;i++){
+                    if(group["group_items"][i] != req.body._item_id && !deleted){
+                        tempArr.push(group["group_items"][i]);
+                    }
+                    else if(deleted){
+                        tempArr.push(group["group_items"][i]);
+                    }
+                    else{
+                        deleted = true;
+                    }
+                }
+                
+                console.log(tempArr);
+
+                await quantdefi.collection("group-items").updateOne({_id: group_id},{ $set: {group_items: tempArr}},{ "upsert" : true });
+            }
+        
+        }
+
+        res.send({});
+        
+    });
+
+
+
     app.post('/createitemgroup', async (req, res) =>{
 
         var id = ObjectId(null);
@@ -391,7 +475,7 @@ const jsonObj = {
             new_id = ObjectId(null);
             created_by = ObjectId(userId);
 
-            var cur = await quantdefi.collection("folders").find({save_as: true, created_by: ObjectId(userId)});
+            var cur = await quantdefi.collection("folders").find({save_as: true, locality: 'item', created_by: ObjectId(userId)});
 
             var hasN = await cur.hasNext();
             if(hasN){
@@ -504,7 +588,118 @@ const jsonObj = {
         
         }
 
-        res.status(201).send({});
+        res.status(201).send({_id:new_id});
+    });
+
+
+
+    app.post('/saveassembly', async (req, res) =>{
+
+        const quantdefi = db.db('quantdefi');
+
+        var saveAs = req.body._save_as;
+        var userId = req.body._user_id;
+
+        var new_id = ObjectId(req.body._id);
+
+
+        var locality = req.body.locality;
+        var id_f = req.body.id_f;
+        var name = req.body.name;
+        var parent = ObjectId(req.body.parent);
+        var created_by = req.body.created_by;
+        if(created_by!=null){
+            created_by = ObjectId(created_by);
+        }
+
+        var group_item = [];
+
+
+        if(saveAs){
+            var gcur = await quantdefi.collection("items").find({_id:new_id});
+            while(await gcur.hasNext()){
+                var assembly = await gcur.next();
+                group_item = assembly['group_item'];
+            }
+
+            var new_group_item = [];
+
+            for(let i=0;i<group_item.length;i++){
+                var gcur2 = await quantdefi.collection('group-items').find({_id:ObjectId(group_item[i])});
+                while(await gcur2.hasNext()){
+                    var group = await gcur2.next();
+
+                    var new_group_id = ObjectId(null);
+                    group['_id'] = new_group_id;
+                    new_group_item.push(new_group_id);
+
+                    await quantdefi.collection('group-items').insertOne(group);
+                }
+            }
+
+            group_item = new_group_item;
+
+        }
+
+
+
+
+        if(saveAs){
+            new_id = ObjectId(null);
+            created_by = ObjectId(userId);
+
+            var cur = await quantdefi.collection("folders").find({save_as: true,locality: 'assembly', created_by: ObjectId(userId)});
+
+            var hasN = await cur.hasNext();
+            if(hasN){
+                while(await cur.hasNext()) {
+                    const folder = await cur.next();
+                    folder["child_item"].push(new_id);
+                    await quantdefi.collection("folders").updateOne({_id: folder['_id']},{ $set: {child_item: folder["child_item"]}},{ "upsert" : true });
+                }
+            } else {
+                const new_id_ = ObjectId(null);
+
+                var data = {
+                    "_id": new_id_,
+                    "type": 'custom',
+                    "save_as": true,
+                    "locality": 'assembly',
+                    "name": 'My Custom Saves',
+                    "child_folder": null,
+                    "child_item": [new_id],
+                    "parent": null,
+                    "created_by": ObjectId(userId),
+                    "creation_date": new Date()
+                }
+
+                await quantdefi.collection("folders").insertOne(data);
+            }
+        }
+
+
+
+        var unit = req.body.units;
+        var description = req.body.description;
+
+        var toInsert = {
+            "_id":new_id,
+            "locality": locality,
+            "id_f": id_f,
+            "name": name,
+            "parent": parent,
+            "created_by": created_by,
+            "unit": unit,
+            "description": description,
+            "group_item": group_item
+        }
+
+
+        //const quantdefi = db.db('quantdefi');
+        await quantdefi.collection("items").deleteOne({_id:new_id});
+        await quantdefi.collection("items").insertOne(toInsert);
+
+        res.status(201).send({_id:new_id});
     });
 
     app.post('/filesystem', async (req, res) =>{
